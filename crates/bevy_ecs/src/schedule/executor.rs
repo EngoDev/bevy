@@ -19,7 +19,7 @@ impl Default for SingleThreadedExecutor {
     fn default() -> Self {
         Self {
             // MAX ensures access information will be initialized on first run.
-            archetype_generation: ArchetypeGeneration::new(usize::MAX),
+            archetype_generation: ArchetypeGeneration::max(),
         }
     }
 }
@@ -52,7 +52,7 @@ impl SingleThreadedExecutor {
             return;
         }
 
-        let archetype_index_range = if old_generation.value() == usize::MAX {
+        let archetype_index_range = if old_generation == ArchetypeGeneration::max() {
             0..archetypes.len()
         } else {
             old_generation.value()..archetypes.len()

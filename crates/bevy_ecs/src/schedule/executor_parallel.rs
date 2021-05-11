@@ -59,7 +59,7 @@ impl Default for ParallelExecutor {
         let (finish_sender, finish_receiver) = async_channel::unbounded();
         Self {
             // MAX ensures access information will be initialized on first run.
-            archetype_generation: ArchetypeGeneration::new(usize::MAX),
+            archetype_generation: ArchetypeGeneration::max(),
             system_metadata: Default::default(),
             finish_sender,
             finish_receiver,
@@ -158,7 +158,7 @@ impl ParallelExecutor {
             return;
         }
 
-        let archetype_index_range = if old_generation.value() == usize::MAX {
+        let archetype_index_range = if old_generation == ArchetypeGeneration::max() {
             0..archetypes.len()
         } else {
             old_generation.value()..archetypes.len()

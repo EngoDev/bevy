@@ -8,6 +8,7 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     hash::Hash,
+    num::NonZeroUsize,
     ops::{Index, IndexMut},
 };
 
@@ -313,17 +314,32 @@ impl Archetype {
 
 /// A generational id that changes every time the set of archetypes changes
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct ArchetypeGeneration(usize);
+#[repr(transparent)]
+pub struct ArchetypeGeneration(NonZeroUsize);
 
 impl ArchetypeGeneration {
     #[inline]
-    pub fn new(generation: usize) -> Self {
-        ArchetypeGeneration(generation)
+    pub fn new(generation: usize) -> Option<Self> {
+        Some(ArchetypeGeneration(NonZeroUsize::new(generation)?))
+    }
+
+    /// # Safety
+    /// `generation` must not be zero.
+    #[inline]
+    pub unsafe fn new_unchecked(generation: usize) -> Self {
+        debug_assert_ne!(generation, 0, "ArchetypeGeneration `0` is invalid.");
+        ArchetypeGeneration(NonZeroUsize::new_unchecked(generation))
+    }
+
+    #[inline]
+    pub const fn max() -> Self {
+        // SAFE: usize::MAX != 0
+        unsafe { Self(NonZeroUsize::new_unchecked(usize::MAX)) }
     }
 
     #[inline]
     pub fn value(self) -> usize {
-        self.0
+        self.0.get()
     }
 }
 
@@ -391,7 +407,9 @@ impl Default for Archetypes {
 impl Archetypes {
     #[inline]
     pub fn generation(&self) -> ArchetypeGeneration {
-        ArchetypeGeneration(self.archetypes.len())
+        debug_assert!(!self.archetypes.is_empty());
+        // SAFE: `self.archetypes` is never empty. There is always at least 1 archetype.
+        unsafe { ArchetypeGeneration::new_unchecked(self.archetypes.len()) }
     }
 
     #[inline]

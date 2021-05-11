@@ -54,7 +54,7 @@ where
 
         let mut state = Self {
             world_id: world.id(),
-            archetype_generation: ArchetypeGeneration::new(usize::MAX),
+            archetype_generation: ArchetypeGeneration::max(),
             matched_table_ids: Vec::new(),
             matched_archetype_ids: Vec::new(),
             fetch_state,
@@ -79,7 +79,7 @@ where
             0..0
         } else {
             self.archetype_generation = archetypes.generation();
-            if old_generation.value() == usize::MAX {
+            if old_generation == ArchetypeGeneration::max() {
                 0..archetypes.len()
             } else {
                 old_generation.value()..archetypes.len()

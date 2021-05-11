@@ -8,8 +8,57 @@ use crate::{archetype::ArchetypeId, storage::SparseSetIndex};
 use std::{
     convert::TryFrom,
     fmt, mem,
+    num::NonZeroU32,
     sync::atomic::{AtomicI64, Ordering},
 };
+
+#[derive(Debug, Clone, Copy, Hash, Eq, Ord, PartialEq, PartialOrd)]
+#[repr(transparent)]
+pub struct Generation(NonZeroU32);
+
+impl Generation {
+    /// Creates a [`Generation`] if the given value is not zero.
+    #[inline]
+    #[allow(clippy::manual_map)]
+    pub const fn new(n: u32) -> Option<Self> {
+        if let Some(n) = NonZeroU32::new(n) {
+            Some(Self(n))
+        } else {
+            None
+        }
+    }
+
+    /// Creates a [`Generation`] without checking the value.
+    ///
+    /// # Safety
+    ///
+    /// The value must not be zero.
+    #[inline]
+    pub unsafe fn new_unchecked(n: u32) -> Self {
+        debug_assert_ne!(n, 0, "Generation `0` is invalid.");
+        Self(NonZeroU32::new_unchecked(n))
+    }
+
+    /// Returns the first generation (1).
+    #[inline]
+    pub const fn first() -> Self {
+        // SAFE: 1 != 0
+        Self(unsafe { NonZeroU32::new_unchecked(1) })
+    }
+
+    /// Returns the [`Generation`] as a primitive [u32].
+    #[inline]
+    const fn value(&self) -> u32 {
+        self.0.get()
+    }
+
+    /// Returns the next generation value.
+    #[inline]
+    #[must_use]
+    fn increment(&self) -> Self {
+        Self::new(self.value() + 1).unwrap() // TODO: consider use Self::new_unchecked??
+    }
+}
 
 /// Lightweight unique ID of an entity.
 ///
@@ -22,14 +71,17 @@ use std::{
 /// [`Query::get`](crate::system::Query::get) and related methods.
 #[derive(Clone, Copy, Hash, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Entity {
-    pub(crate) generation: u32,
+    pub(crate) generation: Generation,
     pub(crate) id: u32,
 }
 
 impl Entity {
-    /// Creates a new entity reference with a generation of 0.
-    pub fn new(id: u32) -> Entity {
-        Entity { id, generation: 0 }
+    /// Creates a new entity reference with a generation of 1.
+    pub const fn new(id: u32) -> Entity {
+        Entity {
+            id,
+            generation: Generation::first(),
+        }
     }
 
     /// Convert to a form convenient for passing outside of rust.
@@ -39,15 +91,18 @@ impl Entity {
     ///
     /// No particular structure is guaranteed for the returned bits.
     pub fn to_bits(self) -> u64 {
-        u64::from(self.generation) << 32 | u64::from(self.id)
+        u64::from(self.generation.value()) << 32 | u64::from(self.id)
     }
 
     /// Reconstruct an `Entity` previously destructured with [`Entity::to_bits`].
     ///
     /// Only useful when applied to results from `to_bits` in the same instance of an application.
-    pub fn from_bits(bits: u64) -> Self {
+    ///
+    /// # Safety
+    /// The `bits` used to construct this entity must be a result from calling [`Entity::to_bits`].
+    pub unsafe fn from_bits(bits: u64) -> Self {
         Self {
-            generation: (bits >> 32) as u32,
+            generation: Generation::new_unchecked((bits >> 32) as u32),
             id: bits as u32,
         }
     }
@@ -66,14 +121,14 @@ impl Entity {
     /// entity with a given id is despawned. This serves as a "count" of the number of times a
     /// given id has been reused (id, generation) pairs uniquely identify a given Entity.
     #[inline]
-    pub fn generation(self) -> u32 {
+    pub fn generation(self) -> Generation {
         self.generation
     }
 }
 
 impl fmt::Debug for Entity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}v{}", self.id, self.generation)
+        write!(f, "{}v{}", self.id, self.generation.value())
     }
 }
 
@@ -110,7 +165,12 @@ impl<'a> Iterator for ReserveEntitiesIterator<'a> {
                 generation: self.meta[id as usize].generation,
                 id,
             })
-            .or_else(|| self.id_range.next().map(|id| Entity { generation: 0, id }))
+            .or_else(|| {
+                self.id_range.next().map(|id| Entity {
+                    generation: Generation::first(),
+                    id,
+                })
+            })
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -227,7 +287,7 @@ impl Entities {
             // As `self.free_cursor` goes more and more negative, we return IDs farther
             // and farther beyond `meta.len()`.
             Entity {
-                generation: 0,
+                generation: Generation::first(),
                 id: u32::try_from(self.meta.len() as i64 - n).expect("too many entities"),
             }
         }
@@ -258,7 +318,7 @@ impl Entities {
         } else {
             let id = u32::try_from(self.meta.len()).expect("too many entities");
             self.meta.push(EntityMeta::EMPTY);
-            Entity { generation: 0, id }
+            Entity::new(id)
         }
     }
 
@@ -304,7 +364,7 @@ impl Entities {
         if meta.generation != entity.generation {
             return None;
         }
-        meta.generation += 1;
+        meta.generation = meta.generation.increment();
 
         let loc = mem::replace(&mut meta.location, EntityMeta::EMPTY.location);
 
@@ -386,8 +446,11 @@ impl Entities {
             let num_pending = std::cmp::max(-free_cursor, 0) as usize;
 
             if meta_len + num_pending > id as usize {
-                // Pending entities will have generation 0.
-                Entity { generation: 0, id }
+                // Pending entities will have generation 1.
+                Entity {
+                    generation: Generation::first(),
+                    id,
+                }
             } else {
                 panic!("entity id is out of range");
             }
@@ -451,13 +514,13 @@ impl Entities {
 
 #[derive(Copy, Clone, Debug)]
 pub struct EntityMeta {
-    pub generation: u32,
+    pub generation: Generation,
     pub location: EntityLocation,
 }
 
 impl EntityMeta {
     const EMPTY: EntityMeta = EntityMeta {
-        generation: 0,
+        generation: Generation::first(),
         location: EntityLocation {
             archetype_id: ArchetypeId::empty(),
             index: usize::max_value(), // dummy value, to be filled in
@@ -482,10 +545,11 @@ mod tests {
     #[test]
     fn entity_bits_roundtrip() {
         let e = Entity {
-            generation: 0xDEADBEEF,
+            generation: Generation(NonZeroU32::new(0xDEADBEEF).unwrap()),
             id: 0xBAADF00D,
         };
-        assert_eq!(Entity::from_bits(e.to_bits()), e);
+        // SAFE: the entity is created from its own bits.
+        assert_eq!(unsafe { Entity::from_bits(e.to_bits()) }, e);
     }
 
     #[test]
