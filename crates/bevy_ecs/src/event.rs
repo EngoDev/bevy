@@ -17,7 +17,7 @@ use std::{
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct EventId<T> {
     pub id: usize,
-    _marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<T> Copy for EventId<T> {}
@@ -174,14 +174,14 @@ impl<'a, T: Component> EventWriter<'a, T> {
 
 pub struct ManualEventReader<T> {
     last_event_count: usize,
-    _marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<T> Default for ManualEventReader<T> {
     fn default() -> Self {
         ManualEventReader {
             last_event_count: 0,
-            _marker: Default::default(),
+            _phantom: PhantomData,
         }
     }
 }
@@ -275,7 +275,7 @@ impl<T: Component> Events<T> {
     pub fn send(&mut self, event: T) {
         let event_id = EventId {
             id: self.event_count,
-            _marker: PhantomData,
+            _phantom: PhantomData,
         };
         trace!("Events::send() -> {}", event_id);
 
@@ -293,7 +293,7 @@ impl<T: Component> Events<T> {
     pub fn get_reader(&self) -> ManualEventReader<T> {
         ManualEventReader {
             last_event_count: 0,
-            _marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -302,7 +302,7 @@ impl<T: Component> Events<T> {
     pub fn get_reader_current(&self) -> ManualEventReader<T> {
         ManualEventReader {
             last_event_count: self.event_count,
-            _marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 

@@ -87,14 +87,14 @@ impl<T: Component> WorldQuery for With<T> {
 /// The [`Fetch`] of [`With`].
 pub struct WithFetch<T> {
     storage_type: StorageType,
-    marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 /// The [`FetchState`] of [`With`].
 pub struct WithState<T> {
     component_id: ComponentId,
     storage_type: StorageType,
-    marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 // SAFETY: no component access or archetype component access
@@ -104,7 +104,7 @@ unsafe impl<T: Component> FetchState for WithState<T> {
         Self {
             component_id: component_info.id(),
             storage_type: component_info.storage_type(),
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -142,7 +142,7 @@ impl<'a, T: Component> Fetch<'a> for WithFetch<T> {
     ) -> Self {
         Self {
             storage_type: state.storage_type,
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -206,14 +206,14 @@ impl<T: Component> WorldQuery for Without<T> {
 /// The [`Fetch`] of [`Without`].
 pub struct WithoutFetch<T> {
     storage_type: StorageType,
-    marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 /// The [`FetchState`] of [`Without`].
 pub struct WithoutState<T> {
     component_id: ComponentId,
     storage_type: StorageType,
-    marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 // SAFETY: no component access or archetype component access
@@ -223,7 +223,7 @@ unsafe impl<T: Component> FetchState for WithoutState<T> {
         Self {
             component_id: component_info.id(),
             storage_type: component_info.storage_type(),
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -261,7 +261,7 @@ impl<'a, T: Component> Fetch<'a> for WithoutFetch<T> {
     ) -> Self {
         Self {
             storage_type: state.storage_type,
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -302,13 +302,13 @@ impl<T: Bundle> WorldQuery for WithBundle<T> {
 
 pub struct WithBundleFetch<T: Bundle> {
     is_dense: bool,
-    marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 pub struct WithBundleState<T: Bundle> {
     component_ids: Vec<ComponentId>,
     is_dense: bool,
-    marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 // SAFETY: no component access or archetype component access
@@ -321,7 +321,7 @@ unsafe impl<T: Bundle> FetchState for WithBundleState<T> {
             is_dense: !bundle_info.component_ids.iter().any(|id| unsafe {
                 components.get_info_unchecked(*id).storage_type() != StorageType::Table
             }),
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -361,7 +361,7 @@ impl<'a, T: Bundle> Fetch<'a> for WithBundleFetch<T> {
     ) -> Self {
         Self {
             is_dense: state.is_dense,
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -563,7 +563,7 @@ macro_rules! impl_tick_filter {
             storage_type: StorageType,
             table_ticks: *mut ComponentTicks,
             entity_table_rows: *const usize,
-            marker: PhantomData<T>,
+            _phantom: PhantomData<T>,
             entities: *const Entity,
             sparse_set: *const ComponentSparseSet,
             last_change_tick: u32,
@@ -574,7 +574,7 @@ macro_rules! impl_tick_filter {
         pub struct $state_name<T> {
             component_id: ComponentId,
             storage_type: StorageType,
-            marker: PhantomData<T>,
+            _phantom: PhantomData<T>,
         }
 
         impl<T: Component> WorldQuery for $name<T> {
@@ -590,7 +590,7 @@ macro_rules! impl_tick_filter {
                 Self {
                     component_id: component_info.id(),
                     storage_type: component_info.storage_type(),
-                    marker: PhantomData,
+                    _phantom: PhantomData,
                 }
             }
 
@@ -634,7 +634,7 @@ macro_rules! impl_tick_filter {
                     entities: ptr::null::<Entity>(),
                     entity_table_rows: ptr::null::<usize>(),
                     sparse_set: ptr::null::<ComponentSparseSet>(),
-                    marker: PhantomData,
+                    _phantom: PhantomData,
                     last_change_tick,
                     change_tick,
                 };

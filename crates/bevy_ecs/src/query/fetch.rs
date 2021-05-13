@@ -226,7 +226,7 @@ impl<T: Component> WorldQuery for &T {
 pub struct ReadState<T> {
     component_id: ComponentId,
     storage_type: StorageType,
-    marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 // SAFETY: component access and archetype component access are properly updated to reflect that T is
@@ -237,7 +237,7 @@ unsafe impl<T: Component> FetchState for ReadState<T> {
         ReadState {
             component_id: component_info.id(),
             storage_type: component_info.storage_type(),
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -386,7 +386,7 @@ pub struct WriteFetch<T> {
 pub struct WriteState<T> {
     component_id: ComponentId,
     storage_type: StorageType,
-    marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 // SAFETY: component access and archetype component access are properly updated to reflect that T is
@@ -397,7 +397,7 @@ unsafe impl<T: Component> FetchState for WriteState<T> {
         WriteState {
             component_id: component_info.id(),
             storage_type: component_info.storage_type(),
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -680,7 +680,7 @@ pub struct ChangeTrackers<T: Component> {
     pub(crate) component_ticks: ComponentTicks,
     pub(crate) last_change_tick: u32,
     pub(crate) change_tick: u32,
-    marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<T: Component> std::fmt::Debug for ChangeTrackers<T> {
@@ -716,7 +716,7 @@ impl<T: Component> WorldQuery for ChangeTrackers<T> {
 pub struct ChangeTrackersState<T> {
     component_id: ComponentId,
     storage_type: StorageType,
-    marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 // SAFETY: component access and archetype component access are properly updated to reflect that T is
@@ -727,7 +727,7 @@ unsafe impl<T: Component> FetchState for ChangeTrackersState<T> {
         Self {
             component_id: component_info.id(),
             storage_type: component_info.storage_type(),
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -767,7 +767,7 @@ pub struct ChangeTrackersFetch<T> {
     entity_table_rows: *const usize,
     entities: *const Entity,
     sparse_set: *const ComponentSparseSet,
-    marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
     last_change_tick: u32,
     change_tick: u32,
 }
@@ -799,7 +799,7 @@ impl<'w, T: Component> Fetch<'w> for ChangeTrackersFetch<T> {
             entities: ptr::null::<Entity>(),
             entity_table_rows: ptr::null::<usize>(),
             sparse_set: ptr::null::<ComponentSparseSet>(),
-            marker: PhantomData,
+            _phantom: PhantomData,
             last_change_tick,
             change_tick,
         };
@@ -848,7 +848,7 @@ impl<'w, T: Component> Fetch<'w> for ChangeTrackersFetch<T> {
                 let table_row = *self.entity_table_rows.add(archetype_index);
                 ChangeTrackers {
                     component_ticks: *self.table_ticks.add(table_row),
-                    marker: PhantomData,
+                    _phantom: PhantomData,
                     last_change_tick: self.last_change_tick,
                     change_tick: self.change_tick,
                 }
@@ -857,7 +857,7 @@ impl<'w, T: Component> Fetch<'w> for ChangeTrackersFetch<T> {
                 let entity = *self.entities.add(archetype_index);
                 ChangeTrackers {
                     component_ticks: *(*self.sparse_set).get_ticks(entity).unwrap(),
-                    marker: PhantomData,
+                    _phantom: PhantomData,
                     last_change_tick: self.last_change_tick,
                     change_tick: self.change_tick,
                 }
@@ -869,7 +869,7 @@ impl<'w, T: Component> Fetch<'w> for ChangeTrackersFetch<T> {
     unsafe fn table_fetch(&mut self, table_row: usize) -> Self::Item {
         ChangeTrackers {
             component_ticks: *self.table_ticks.add(table_row),
-            marker: PhantomData,
+            _phantom: PhantomData,
             last_change_tick: self.last_change_tick,
             change_tick: self.change_tick,
         }

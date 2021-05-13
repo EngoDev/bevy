@@ -174,7 +174,7 @@ impl<'a> Commands<'a> {
     /// Queue a resource removal.
     pub fn remove_resource<T: Component>(&mut self) {
         self.queue.push(RemoveResource::<T> {
-            phantom: PhantomData,
+            _phantom: PhantomData,
         });
     }
 
@@ -253,7 +253,7 @@ impl<'a, 'b> EntityCommands<'a, 'b> {
     {
         self.commands.add(RemoveBundle::<T> {
             entity: self.entity,
-            phantom: PhantomData,
+            _phantom: PhantomData,
         });
         self
     }
@@ -265,7 +265,7 @@ impl<'a, 'b> EntityCommands<'a, 'b> {
     {
         self.commands.add(Remove::<T> {
             entity: self.entity,
-            phantom: PhantomData,
+            _phantom: PhantomData,
         });
         self
     }
@@ -360,7 +360,7 @@ where
 #[derive(Debug)]
 pub struct Remove<T> {
     entity: Entity,
-    phantom: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<T> Command for Remove<T>
@@ -377,7 +377,7 @@ where
 #[derive(Debug)]
 pub struct RemoveBundle<T> {
     pub entity: Entity,
-    pub phantom: PhantomData<T>,
+    pub _phantom: PhantomData<T>,
 }
 
 impl<T> Command for RemoveBundle<T>
@@ -404,7 +404,7 @@ impl<T: Component> Command for InsertResource<T> {
 }
 
 pub struct RemoveResource<T: Component> {
-    pub phantom: PhantomData<T>,
+    pub _phantom: PhantomData<T>,
 }
 
 impl<T: Component> Command for RemoveResource<T> {

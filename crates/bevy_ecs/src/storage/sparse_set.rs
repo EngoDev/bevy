@@ -8,7 +8,7 @@ use std::{cell::UnsafeCell, marker::PhantomData};
 #[derive(Debug)]
 pub struct SparseArray<I, V = I> {
     values: Vec<Option<V>>,
-    marker: PhantomData<I>,
+    _phantom: PhantomData<I>,
 }
 
 impl<I: SparseSetIndex, V> Default for SparseArray<I, V> {
@@ -22,7 +22,7 @@ impl<I, V> SparseArray<I, V> {
     pub const fn new() -> Self {
         Self {
             values: Vec::new(),
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 }
@@ -31,7 +31,7 @@ impl<I: SparseSetIndex, V> SparseArray<I, V> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             values: Vec::with_capacity(capacity),
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 

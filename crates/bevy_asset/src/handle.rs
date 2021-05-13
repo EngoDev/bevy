@@ -69,7 +69,7 @@ where
     handle_type: HandleType,
     #[reflect(ignore)]
     // NOTE: PhantomData<fn() -> T> gives this safe Send/Sync impls
-    marker: PhantomData<fn() -> T>,
+    _phantom: PhantomData<fn() -> T>,
 }
 
 enum HandleType {
@@ -92,7 +92,7 @@ impl<T: Asset> Handle<T> {
         Self {
             id,
             handle_type: HandleType::Strong(ref_change_sender),
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -100,7 +100,7 @@ impl<T: Asset> Handle<T> {
         Self {
             id,
             handle_type: HandleType::Weak,
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -108,7 +108,7 @@ impl<T: Asset> Handle<T> {
         Handle {
             id: self.id,
             handle_type: HandleType::Weak,
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -290,7 +290,7 @@ impl HandleUntyped {
         Handle {
             handle_type,
             id: self.id,
-            marker: PhantomData::default(),
+            _phantom: PhantomData,
         }
     }
 }

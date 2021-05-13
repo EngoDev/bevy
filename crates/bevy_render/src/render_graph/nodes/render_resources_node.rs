@@ -129,7 +129,7 @@ where
     required_staging_buffer_size: usize,
     current_staging_buffer_offset: usize,
     queued_buffer_writes: Vec<QueuedBufferWrite>,
-    _marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<I, T> Default for UniformBufferArrays<I, T>
@@ -144,7 +144,7 @@ where
             current_staging_buffer_offset: 0,
             queued_buffer_writes: Vec::new(),
             required_staging_buffer_size: 0,
-            _marker: Default::default(),
+            _phantom: Default::default(),
         }
     }
 }
@@ -364,7 +364,7 @@ where
 {
     command_queue: CommandQueue,
     dynamic_uniforms: bool,
-    _marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<T> RenderResourcesNode<T>
@@ -375,7 +375,7 @@ where
         RenderResourcesNode {
             command_queue: CommandQueue::default(),
             dynamic_uniforms,
-            _marker: PhantomData::default(),
+            _phantom: PhantomData,
         }
     }
 }
@@ -546,7 +546,7 @@ where
 {
     command_queue: CommandQueue,
     dynamic_uniforms: bool,
-    _marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<T> AssetRenderResourcesNode<T>
@@ -557,7 +557,7 @@ where
         AssetRenderResourcesNode {
             dynamic_uniforms,
             command_queue: Default::default(),
-            _marker: Default::default(),
+            _phantom: PhantomData,
         }
     }
 }
@@ -598,13 +598,13 @@ where
 
 struct AssetRenderNodeState<T: Asset> {
     assets_waiting_for_textures: Vec<HandleId>,
-    _marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<T: Asset> Default for AssetRenderNodeState<T> {
     fn default() -> Self {
         Self {
-            _marker: Default::default(),
+            _phantom: PhantomData,
             assets_waiting_for_textures: Default::default(),
         }
     }

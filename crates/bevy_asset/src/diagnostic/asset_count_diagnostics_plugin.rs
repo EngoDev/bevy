@@ -5,13 +5,13 @@ use bevy_ecs::system::{IntoSystem, Res, ResMut};
 
 /// Adds "asset count" diagnostic to an App
 pub struct AssetCountDiagnosticsPlugin<T: Asset> {
-    marker: std::marker::PhantomData<T>,
+    _phantom: std::marker::PhantomData<T>,
 }
 
 impl<T: Asset> Default for AssetCountDiagnosticsPlugin<T> {
     fn default() -> Self {
         Self {
-            marker: std::marker::PhantomData,
+            _phantom: std::marker::PhantomData,
         }
     }
 }

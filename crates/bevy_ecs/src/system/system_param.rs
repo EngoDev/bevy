@@ -210,7 +210,7 @@ impl<'w, T: Component> Deref for Res<'w, T> {
 /// The [`SystemParamState`] of [`Res`].
 pub struct ResState<T> {
     component_id: ComponentId,
-    marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<'a, T: Component> SystemParam for Res<'a, T> {
@@ -241,7 +241,7 @@ unsafe impl<T: Component> SystemParamState for ResState<T> {
             .add_read(archetype_component_id);
         Self {
             component_id,
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -370,7 +370,7 @@ impl<'w, T: Component> DerefMut for ResMut<'w, T> {
 /// The [`SystemParamState`] of [`ResMut`].
 pub struct ResMutState<T> {
     component_id: ComponentId,
-    marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<'a, T: Component> SystemParam for ResMut<'a, T> {
@@ -405,7 +405,7 @@ unsafe impl<T: Component> SystemParamState for ResMutState<T> {
             .add_write(archetype_component_id);
         Self {
             component_id,
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -619,7 +619,7 @@ impl<'a, T: Component + FromWorld> SystemParamFetch<'a> for LocalState<T> {
 pub struct RemovedComponents<'a, T> {
     world: &'a World,
     component_id: ComponentId,
-    marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<'a, T> RemovedComponents<'a, T> {
@@ -632,7 +632,7 @@ impl<'a, T> RemovedComponents<'a, T> {
 /// The [`SystemParamState`] of [`RemovedComponents`].
 pub struct RemovedComponentsState<T> {
     component_id: ComponentId,
-    marker: PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<'a, T: Component> SystemParam for RemovedComponents<'a, T> {
@@ -647,7 +647,7 @@ unsafe impl<T: Component> SystemParamState for RemovedComponentsState<T> {
     fn init(world: &mut World, _system_state: &mut SystemState, _config: Self::Config) -> Self {
         Self {
             component_id: world.components.get_or_insert_id::<T>(),
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -667,7 +667,7 @@ impl<'a, T: Component> SystemParamFetch<'a> for RemovedComponentsState<T> {
         RemovedComponents {
             world,
             component_id: state.component_id,
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 }
@@ -724,7 +724,7 @@ impl<'w, T: 'static> Deref for NonSend<'w, T> {
 /// The [`SystemParamState`] of [`NonSend`].
 pub struct NonSendState<T> {
     component_id: ComponentId,
-    marker: PhantomData<fn() -> T>,
+    _phantom: PhantomData<fn() -> T>,
 }
 
 impl<'a, T: 'static> SystemParam for NonSend<'a, T> {
@@ -757,7 +757,7 @@ unsafe impl<T: 'static> SystemParamState for NonSendState<T> {
             .add_read(archetype_component_id);
         Self {
             component_id,
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -851,7 +851,7 @@ impl<'a, T: 'static + core::fmt::Debug> core::fmt::Debug for NonSendMut<'a, T> {
 /// The [`SystemParamState`] of [`NonSendMut`].
 pub struct NonSendMutState<T> {
     component_id: ComponentId,
-    marker: PhantomData<fn() -> T>,
+    _phantom: PhantomData<fn() -> T>,
 }
 
 impl<'a, T: 'static> SystemParam for NonSendMut<'a, T> {
@@ -888,7 +888,7 @@ unsafe impl<T: 'static> SystemParamState for NonSendMutState<T> {
             .add_write(archetype_component_id);
         Self {
             component_id,
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 

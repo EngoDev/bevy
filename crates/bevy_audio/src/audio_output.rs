@@ -11,7 +11,7 @@ where
 {
     _stream: OutputStream,
     stream_handle: OutputStreamHandle,
-    phantom: PhantomData<P>,
+    _phantom: PhantomData<P>,
 }
 
 impl<P> Default for AudioOutput<P>
@@ -24,7 +24,7 @@ where
         Self {
             _stream: stream,
             stream_handle,
-            phantom: PhantomData,
+            _phantom: PhantomData,
         }
     }
 }

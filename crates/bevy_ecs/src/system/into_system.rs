@@ -119,7 +119,7 @@ where
     system_state: SystemState,
     config: Option<<Param::Fetch as SystemParamState>::Config>,
     // NOTE: PhantomData<fn()-> T> gives this safe Send/Sync impls
-    marker: PhantomData<fn() -> (In, Out, Marker)>,
+    _phantom: PhantomData<fn() -> (In, Out, Marker)>,
 }
 
 impl<In, Out, Param: SystemParam, Marker, F> FunctionSystem<In, Out, Param, Marker, F> {
@@ -161,7 +161,7 @@ where
             param_state: None,
             config: Some(<Param::Fetch as SystemParamState>::default_config()),
             system_state: SystemState::new::<F>(),
-            marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 }
