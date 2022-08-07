@@ -73,10 +73,9 @@ use std::{any::TypeId, collections::HashMap};
 /// # Safety
 ///
 /// - [`Bundle::component_ids`] must return the [`ComponentId`] for each component type in the
-/// bundle, in the _exact_ order that [`Bundle::get_components`] is called.
+/// bundle, in the _exact_ order that [`BundleDynamic::get_components`] is called.
 /// - [`Bundle::from_components`] must call `func` exactly once for each [`ComponentId`] returned by
 ///   [`Bundle::component_ids`].
-/// - The [`DynamicBundle`] implementation must match the component ids of the [`Bundle`]
 pub unsafe trait Bundle: DynamicBundle + Send + Sync + 'static {
     /// Gets this [`Bundle`]'s component ids, in the order of this bundle's [`Component`]s
     fn component_ids(components: &mut Components, storages: &mut Storages) -> Vec<ComponentId>;
@@ -108,7 +107,7 @@ macro_rules! tuple_impl {
     ($($name: ident),*) => {
         // SAFETY:
         // - `Bundle::component_ids` returns the `ComponentId`s for each component type in the
-        // bundle, in the exact order that `Bundle::get_components` is called.
+        // bundle, in the exact order that `BundleDynamic::get_components` is called.
         // - `Bundle::from_components` calls `func` exactly once for each `ComponentId` returned by `Bundle::component_ids`.
         unsafe impl<$($name: Component),*> Bundle for ($($name,)*) {
             #[allow(unused_variables)]
