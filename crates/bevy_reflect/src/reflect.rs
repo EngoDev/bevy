@@ -221,10 +221,26 @@ impl dyn Reflect {
     /// If the underlying value is not of type `T`, returns `Err(self)`.
     pub fn downcast<T: Reflect>(self: Box<dyn Reflect>) -> Result<Box<T>, Box<dyn Reflect>> {
         if self.is::<T>() {
-            Ok(self.into_any().downcast().unwrap())
+            // SAFETY: `self` is of type `T`.
+            Ok(unsafe { self.downcast_unchecked() })
         } else {
             Err(self)
         }
+    }
+
+    /// Downcasts the value to type `T`, consuming the trait object.
+    ///
+    /// # Safety
+    /// The contained value must be of type `T`. Calling this method
+    /// with the incorrect type is *undefined behavior*.
+    ///
+    /// For a safe alternative see `downcast`.
+    pub unsafe fn downcast_unchecked<T: Reflect>(self: Box<dyn Reflect>) -> Box<T> {
+        debug_assert!(self.is::<T>());
+        let raw = Box::into_raw(self);
+        // SAFETY: caller maintains that `self` is of type `T`.
+        // And the value was leaked above so a double free is not possible.
+        Box::from_raw(raw as *mut T)
     }
 
     /// Downcasts the value to type `T`, unboxing and consuming the trait object.
