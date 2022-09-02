@@ -73,7 +73,7 @@ use std::{any::TypeId, collections::HashMap};
 /// # Safety
 ///
 /// - [`Bundle::component_ids`] must return the [`ComponentId`] for each component type in the
-/// bundle, in the _exact_ order that [`BundleDynamic::get_components`] is called.
+/// bundle, in the _exact_ order that [`DynamicBundle::get_components`] is called.
 /// - [`Bundle::from_components`] must call `func` exactly once for each [`ComponentId`] returned by
 ///   [`Bundle::component_ids`].
 pub unsafe trait Bundle: DynamicBundle + Send + Sync + 'static {
@@ -589,7 +589,7 @@ impl<'a, 'b> BundleSpawner<'a, 'b> {
 pub struct Bundles {
     bundle_infos: Vec<BundleInfo>,
     bundle_ids: HashMap<TypeId, BundleId>,
-    bundle_ids_dynamic: HashMap<Vec<ComponentId>, BundleId>,
+    bundle_ids_dynamic: HashMap<Box<[ComponentId]>, BundleId>,
 }
 
 impl Bundles {
@@ -633,7 +633,7 @@ impl Bundles {
         // PERF: use `raw_entry` to avoid clone when it is stabilized
         let id = self
             .bundle_ids_dynamic
-            .entry(component_ids.clone())
+            .entry(component_ids.clone().into_boxed_slice())
             .or_insert_with(|| {
                 let id = BundleId(bundle_infos.len());
                 // SAFETY: `component_ids` are valid as promised in the functions safety contract
