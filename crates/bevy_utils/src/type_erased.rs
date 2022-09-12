@@ -111,4 +111,16 @@ impl<UserData> TypeErasedVec<UserData> {
 }
 
 #[cfg(test)]
-mod test {}
+mod test {
+    use super::*;
+
+    struct WithPadding(u8, u16);
+
+    #[cfg(miri)]
+    #[test]
+    fn test_uninit_bytes() {
+        let mut queue = TypeErasedVec::<()>::new();
+        queue.push(WithPadding(0, 0), ());
+        let _ = format!("{:?}", queue.bytes);
+    }
+}
