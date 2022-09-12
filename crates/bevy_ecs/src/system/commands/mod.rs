@@ -932,9 +932,12 @@ mod tests {
         system::{CommandQueue, Commands, Resource},
         world::World,
     };
-    use std::sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
+    use std::{
+        any::TypeId,
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        },
     };
 
     #[derive(Component)]
@@ -1091,25 +1094,31 @@ mod tests {
         let initial_archetypes = world.archetypes().len();
 
         let mut queue = CommandQueue::default();
-        let id;
 
         {
             let mut commands = Commands::new(&mut queue, &world);
-            id = commands
+            commands
                 .spawn()
                 .insert(W(1i32))
                 .insert(W(2i64))
-                .insert(W(3.0f32))
-                .id();
+                .insert(W(3.0f32));
         }
 
         queue.apply(&mut world);
 
-        let e = world.entity(id);
-        assert_eq!(e.get::<W<i32>>(), Some(&W(1)));
-        assert_eq!(e.get::<W<i64>>(), Some(&W(2)));
-        assert_eq!(e.get::<W<f32>>(), Some(&W(3.0)));
-
         assert_eq!(world.archetypes().len() - initial_archetypes, 1);
+
+        let component_ids = [
+            TypeId::of::<W<i32>>(),
+            TypeId::of::<W<i64>>(),
+            TypeId::of::<W<f32>>(),
+        ]
+        .into_iter()
+        .map(|type_id| world.components().get_id(type_id).unwrap())
+        .collect::<Vec<_>>();
+
+        let archetype = world.archetypes().iter().nth(initial_archetypes).unwrap();
+        assert_eq!(archetype.components().count(), component_ids.len());
+        assert!(archetype.components().all(|id| component_ids.contains(&id)));
     }
 }
