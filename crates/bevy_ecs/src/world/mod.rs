@@ -9,7 +9,7 @@ pub use world_cell::*;
 
 use crate::{
     archetype::{ArchetypeComponentId, ArchetypeComponentInfo, ArchetypeId, Archetypes},
-    bundle::{Bundle, BundleInserter, BundleSpawner, Bundles},
+    bundle::{BundleInserter, BundleSpawner, Bundles, StaticBundle},
     change_detection::{MutUntyped, Ticks},
     component::{
         Component, ComponentDescriptor, ComponentId, ComponentInfo, ComponentTicks, Components,
@@ -431,7 +431,7 @@ impl World {
     pub fn spawn_batch<I>(&mut self, iter: I) -> SpawnBatchIter<'_, I::IntoIter>
     where
         I: IntoIterator,
-        I::Item: Bundle,
+        I::Item: StaticBundle,
     {
         SpawnBatchIter::new(self, iter.into_iter())
     }
@@ -971,7 +971,7 @@ impl World {
     where
         I: IntoIterator,
         I::IntoIter: Iterator<Item = (Entity, B)>,
-        B: Bundle,
+        B: StaticBundle,
     {
         self.flush();
 

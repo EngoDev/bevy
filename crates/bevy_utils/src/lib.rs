@@ -5,6 +5,7 @@ pub mod prelude {
 pub mod futures;
 pub mod label;
 mod short_names;
+pub mod type_erased;
 pub use short_names::get_short_name;
 pub mod synccell;
 

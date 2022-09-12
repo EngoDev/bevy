@@ -54,7 +54,7 @@ mod tests {
     use crate as bevy_ecs;
     use crate::prelude::Or;
     use crate::{
-        bundle::Bundle,
+        bundle::{Bundle, StaticBundle},
         component::{Component, ComponentId},
         entity::Entity,
         query::{Added, ChangeTrackers, Changed, FilteredAccess, With, Without, WorldQuery},
@@ -140,7 +140,7 @@ mod tests {
         }
 
         assert_eq!(
-            <Foo as Bundle>::component_ids(&mut world.components, &mut world.storages),
+            <Foo as StaticBundle>::component_ids(&mut world.components, &mut world.storages),
             vec![
                 world.init_component::<TableStored>(),
                 world.init_component::<SparseStored>(),
@@ -188,7 +188,7 @@ mod tests {
         }
 
         assert_eq!(
-            <Nested as Bundle>::component_ids(&mut world.components, &mut world.storages),
+            <Nested as StaticBundle>::component_ids(&mut world.components, &mut world.storages),
             vec![
                 world.init_component::<A>(),
                 world.init_component::<TableStored>(),

@@ -1,6 +1,6 @@
 use crate::{
     archetype::{Archetype, ArchetypeId, Archetypes},
-    bundle::{Bundle, BundleInfo, DynamicBundle},
+    bundle::{Bundle, BundleInfo, DynamicBundle, StaticBundle},
     change_detection::{MutUntyped, Ticks},
     component::{Component, ComponentId, ComponentTicks, Components, StorageType},
     entity::{Entities, Entity, EntityLocation},
@@ -238,7 +238,7 @@ impl<'w> EntityMut<'w> {
             })
     }
 
-    pub fn insert_bundle<T: Bundle>(&mut self, bundle: T) -> &mut Self {
+    pub fn insert_bundle<T: StaticBundle>(&mut self, bundle: T) -> &mut Self {
         let change_tick = self.world.change_tick();
         let bundle_info = self
             .world
@@ -272,7 +272,35 @@ impl<'w> EntityMut<'w> {
         component_id: ComponentId,
         value: OwningPtr<'_>,
     ) -> &mut Self {
-        self.insert_bundle_by_ids(vec![component_id], vec![value])
+        self.insert_bundle_by_ids([component_id], [value])
+    }
+
+    /// TODO
+    pub fn insert_dynamic_bundle(&mut self, mut bundle: impl DynamicBundle) -> &mut Self {
+        let component_ids =
+            bundle.dynamic_component_ids(&mut self.world.components, &mut self.world.storages);
+
+        let change_tick = self.world.change_tick();
+
+        // SAFETY: component_ids are all valid, as held by the guarantees of `DynamicBundle::dynamic_component_ids`.
+        let bundle_info = unsafe {
+            self.world
+                .bundles
+                .init_info_dynamic(&mut self.world.components, component_ids)
+        };
+        let mut bundle_inserter = bundle_info.get_bundle_inserter(
+            &mut self.world.entities,
+            &mut self.world.archetypes,
+            &mut self.world.components,
+            &mut self.world.storages,
+            self.location.archetype_id,
+            change_tick,
+        );
+
+        // SAFETY: location matches current entity. `T` matches `bundle_info`
+        self.location = unsafe { bundle_inserter.insert(self.entity, self.location.index, bundle) };
+
+        self
     }
 
     /// Inserts a bundle of components into the entity. Will replace the values if they already existed.
@@ -282,15 +310,21 @@ impl<'w> EntityMut<'w> {
     ///
     /// # Safety
     /// - each value of `components` must be valid for the [`ComponentId`] at the matching position in `component_ids` in this world
-    pub unsafe fn insert_bundle_by_ids(
+    pub unsafe fn insert_bundle_by_ids<'ptr, ID, C>(
         &mut self,
-        mut component_ids: Vec<ComponentId>,
-        components: Vec<OwningPtr<'_>>,
-    ) -> &mut Self {
-        component_ids.sort();
+        component_ids: ID,
+        components: C,
+    ) -> &mut Self
+    where
+        ID: IntoIterator<Item = ComponentId>,
+        for<'a> &'a ID: IntoIterator<Item = &'a ComponentId>,
+        C: IntoIterator<Item = OwningPtr<'ptr>>,
+    {
+        let component_ids = component_ids.into_iter().collect::<Vec<_>>();
+        // component_ids.sort(); <--- WHY????
 
-        for &id in &component_ids {
-            self.world.components().get_info(id).unwrap_or_else(|| {
+        for id in component_ids.iter() {
+            self.world.components().get_info(*id).unwrap_or_else(|| {
                 panic!(
                     "insert_bundle_by_ids called with component id {id:?} which doesn't exist in this world"
                 )
@@ -300,13 +334,18 @@ impl<'w> EntityMut<'w> {
         struct DynamicInsertBundle<'a> {
             components: Vec<OwningPtr<'a>>,
         }
-        unsafe impl DynamicBundle for DynamicInsertBundle<'_> {
+
+        // SAFETY: The components are in the correct order as guaranteed by the caller of
+        // this function.
+        unsafe impl Bundle for DynamicInsertBundle<'_> {
             fn get_components(self, func: impl FnMut(OwningPtr<'_>)) {
                 self.components.into_iter().for_each(func);
             }
         }
 
-        let bundle = DynamicInsertBundle { components };
+        let bundle = DynamicInsertBundle {
+            components: components.into_iter().collect(),
+        };
 
         let change_tick = self.world.change_tick();
         // SAFETY: component_ids are all valid, because they are checked in this function
@@ -329,7 +368,7 @@ impl<'w> EntityMut<'w> {
     }
 
     // TODO: move to BundleInfo
-    pub fn remove_bundle<T: Bundle>(&mut self) -> Option<T> {
+    pub fn remove_bundle<T: StaticBundle>(&mut self) -> Option<T> {
         let archetypes = &mut self.world.archetypes;
         let storages = &mut self.world.storages;
         let components = &mut self.world.components;
@@ -454,7 +493,7 @@ impl<'w> EntityMut<'w> {
 
     // TODO: move to BundleInfo
     /// Remove any components in the bundle that the entity has.
-    pub fn remove_bundle_intersection<T: Bundle>(&mut self) {
+    pub fn remove_bundle_intersection<T: StaticBundle>(&mut self) {
         let archetypes = &mut self.world.archetypes;
         let storages = &mut self.world.storages;
         let components = &mut self.world.components;

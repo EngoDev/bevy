@@ -118,13 +118,13 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
     {
         if *is_bundle {
             field_component_ids.push(quote! {
-                component_ids.extend(<#field_type as #ecs_path::bundle::Bundle>::component_ids(components, storages));
+                component_ids.extend(<#field_type as #ecs_path::bundle::StaticBundle>::component_ids(components, storages));
             });
             field_get_components.push(quote! {
                 self.#field.get_components(&mut func);
             });
             field_from_components.push(quote! {
-                #field: <#field_type as #ecs_path::bundle::Bundle>::from_components(ctx, &mut func),
+                #field: <#field_type as #ecs_path::bundle::StaticBundle>::from_components(ctx, &mut func),
             });
         } else {
             field_component_ids.push(quote! {
@@ -145,7 +145,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 
     TokenStream::from(quote! {
         /// SAFETY: ComponentId is returned in field-definition-order. [from_components] and [get_components] use field-definition-order
-        unsafe impl #impl_generics #ecs_path::bundle::Bundle for #struct_name #ty_generics #where_clause {
+        unsafe impl #impl_generics #ecs_path::bundle::StaticBundle for #struct_name #ty_generics #where_clause {
             fn component_ids(
                 components: &mut #ecs_path::component::Components,
                 storages: &mut #ecs_path::storage::Storages,
@@ -166,7 +166,8 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
             }
         }
 
-        unsafe impl #impl_generics #ecs_path::bundle::DynamicBundle for #struct_name #ty_generics #where_clause {
+        // SAFETY: see `SAFETY` for impl StaticBundle above
+        unsafe impl #impl_generics #ecs_path::bundle::Bundle for #struct_name #ty_generics #where_clause {
             #[allow(unused_variables, unused_mut, forget_copy, forget_ref)]
             fn get_components(self, mut func: impl FnMut(#ecs_path::ptr::OwningPtr<'_>)) {
                 #(#field_get_components)*

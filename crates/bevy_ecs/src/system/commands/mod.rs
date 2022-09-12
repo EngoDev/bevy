@@ -2,7 +2,7 @@ mod command_queue;
 mod parallel_scope;
 
 use crate::{
-    bundle::Bundle,
+    bundle::{Bundle, DynBundleVec, DynamicBundle, StaticBundle},
     component::Component,
     entity::{Entities, Entity},
     world::{FromWorld, World},
@@ -10,7 +10,7 @@ use crate::{
 use bevy_utils::tracing::{error, info, warn};
 pub use command_queue::CommandQueue;
 pub use parallel_scope::*;
-use std::marker::PhantomData;
+use std::{cell::UnsafeCell, marker::PhantomData};
 
 use super::Resource;
 
@@ -149,8 +149,12 @@ impl<'w, 's> Commands<'w, 's> {
     /// ```
     pub fn spawn<'a>(&'a mut self) -> EntityCommands<'w, 's, 'a> {
         let entity = self.entities.reserve_entity();
+        let bundles = Box::new(UnsafeCell::new(DynBundleVec::new()));
+        let ptr = bundles.get();
+        self.add(Insert { entity, bundles });
         EntityCommands {
             entity,
+            bundles: ptr,
             commands: self,
         }
     }
@@ -165,8 +169,12 @@ impl<'w, 's> Commands<'w, 's> {
     /// by default).
     pub fn get_or_spawn<'a>(&'a mut self, entity: Entity) -> EntityCommands<'w, 's, 'a> {
         self.add(GetOrSpawn { entity });
+        let bundles = Box::new(UnsafeCell::new(DynBundleVec::new()));
+        let ptr = bundles.get();
+        self.add(Insert { entity, bundles });
         EntityCommands {
             entity,
+            bundles: ptr,
             commands: self,
         }
     }
@@ -176,7 +184,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// This returns an [`EntityCommands`] builder, which enables inserting more components and
     /// bundles using a "builder pattern".
     ///
-    /// Note that `bundle` is a [`Bundle`], which is a collection of components. [`Bundle`] is
+    /// Note that `bundle` is a [`StaticBundle`], which is a collection of components. [`StaticBundle`] is
     /// automatically implemented for tuples of components. You can also create your own bundle
     /// types by deriving [`derive@Bundle`].
     ///
@@ -219,9 +227,29 @@ impl<'w, 's> Commands<'w, 's> {
     /// }
     /// # bevy_ecs::system::assert_is_system(example_system);
     /// ```
-    pub fn spawn_bundle<'a, T: Bundle>(&'a mut self, bundle: T) -> EntityCommands<'w, 's, 'a> {
+    pub fn spawn_bundle<'a, T: StaticBundle>(
+        &'a mut self,
+        bundle: T,
+    ) -> EntityCommands<'w, 's, 'a> {
         let mut e = self.spawn();
         e.insert_bundle(bundle);
+        e
+    }
+
+    /// Creates a new entity with the components contained in `bundle`.
+    ///
+    /// This returns an [`EntityCommands`] builder, which enables inserting more components and
+    /// bundles using a "builder pattern".
+    ///
+    /// # Note
+    /// If the bundle type implements [`StaticBundle`], you should prefer to use the [`Self::spawn_bundle`]
+    /// variant for better performance.
+    pub fn spawn_dynamic_bundle<'a, T: DynamicBundle>(
+        &'a mut self,
+        bundle: T,
+    ) -> EntityCommands<'w, 's, 'a> {
+        let mut e = self.spawn();
+        e.insert_dynamic_bundle(bundle);
         e
     }
 
@@ -288,9 +316,15 @@ impl<'w, 's> Commands<'w, 's> {
     #[inline]
     #[track_caller]
     pub fn get_entity<'a>(&'a mut self, entity: Entity) -> Option<EntityCommands<'w, 's, 'a>> {
-        self.entities.contains(entity).then_some(EntityCommands {
-            entity,
-            commands: self,
+        self.entities.contains(entity).then(|| {
+            let bundles = Box::new(UnsafeCell::new(DynBundleVec::new()));
+            let ptr = bundles.get();
+            self.add(Insert { entity, bundles });
+            EntityCommands {
+                entity,
+                bundles: ptr,
+                commands: self,
+            }
         })
     }
 
@@ -328,7 +362,7 @@ impl<'w, 's> Commands<'w, 's> {
     pub fn spawn_batch<I>(&mut self, bundles_iter: I)
     where
         I: IntoIterator + Send + Sync + 'static,
-        I::Item: Bundle,
+        I::Item: StaticBundle,
     {
         self.queue.push(SpawnBatch { bundles_iter });
     }
@@ -347,7 +381,7 @@ impl<'w, 's> Commands<'w, 's> {
     where
         I: IntoIterator + Send + Sync + 'static,
         I::IntoIter: Iterator<Item = (Entity, B)>,
-        B: Bundle,
+        B: StaticBundle,
     {
         self.queue.push(InsertOrSpawnBatch { bundles_iter });
     }
@@ -483,10 +517,20 @@ impl<'w, 's> Commands<'w, 's> {
 /// A list of commands that will be run to modify an [entity](crate::entity).
 pub struct EntityCommands<'w, 's, 'a> {
     entity: Entity,
+    bundles: *mut DynBundleVec,
     commands: &'a mut Commands<'w, 's>,
 }
 
 impl<'w, 's, 'a> EntityCommands<'w, 's, 'a> {
+    fn bundles(&mut self, func: impl FnOnce(&mut DynBundleVec)) {
+        // SAFETY: The `Insert` command on the command queue is the only other
+        // way to access the dynamic bundles vec. No other reference is taken to
+        // the vec until the `Commands` struct goes out of scope. Meaning it is
+        // impossible to get multiple clashing references to the underlying `DynBundleVec`.
+        let bundles = unsafe { &mut *self.bundles };
+        func(bundles);
+    }
+
     /// Returns the [`Entity`] id of the entity.
     ///
     /// # Example
@@ -505,7 +549,7 @@ impl<'w, 's, 'a> EntityCommands<'w, 's, 'a> {
         self.entity
     }
 
-    /// Adds a [`Bundle`] of components to the entity.
+    /// Adds a [`StaticBundle`] of components to the entity.
     ///
     /// # Example
     ///
@@ -537,11 +581,18 @@ impl<'w, 's, 'a> EntityCommands<'w, 's, 'a> {
     /// }
     /// # bevy_ecs::system::assert_is_system(add_combat_stats_system);
     /// ```
-    pub fn insert_bundle(&mut self, bundle: impl Bundle) -> &mut Self {
-        self.commands.add(InsertBundle {
-            entity: self.entity,
-            bundle,
-        });
+    pub fn insert_bundle(&mut self, bundle: impl StaticBundle) -> &mut Self {
+        self.bundles(|bundles| bundles.push(bundle));
+        self
+    }
+
+    /// Adds a [`DynamicBundle`] of components to the entity.
+    ///
+    /// # Note
+    /// If the bundle type implements [`StaticBundle`], you should prefer to use
+    /// [`Self::insert_bundle`] for better performance.
+    pub fn insert_dynamic_bundle(&mut self, bundle: impl DynamicBundle) -> &mut Self {
+        self.bundles(|bundles| bundles.push_dynamic(bundle));
         self
     }
 
@@ -572,10 +623,7 @@ impl<'w, 's, 'a> EntityCommands<'w, 's, 'a> {
     /// # bevy_ecs::system::assert_is_system(example_system);
     /// ```
     pub fn insert(&mut self, component: impl Component) -> &mut Self {
-        self.commands.add(Insert {
-            entity: self.entity,
-            component,
-        });
+        self.bundles(|bundles| bundles.push((component,)));
         self
     }
 
@@ -604,7 +652,7 @@ impl<'w, 's, 'a> EntityCommands<'w, 's, 'a> {
     /// ```
     pub fn remove_bundle<T>(&mut self) -> &mut Self
     where
-        T: Bundle,
+        T: StaticBundle,
     {
         self.commands.add(RemoveBundle::<T> {
             entity: self.entity,
@@ -692,19 +740,19 @@ where
     }
 }
 
-#[derive(Debug)]
-pub struct Spawn<T> {
-    pub bundle: T,
-}
+// #[derive(Debug)]
+// pub struct Spawn<T> {
+//     pub bundle: T,
+// }
 
-impl<T> Command for Spawn<T>
-where
-    T: Bundle,
-{
-    fn write(self, world: &mut World) {
-        world.spawn().insert_bundle(self.bundle);
-    }
-}
+// impl<T> Command for Spawn<T>
+// where
+//     T: Bundle,
+// {
+//     fn write(self, world: &mut World) {
+//         world.spawn().insert_bundle(self.bundle);
+//     }
+// }
 
 pub struct GetOrSpawn {
     entity: Entity,
@@ -727,7 +775,7 @@ where
 impl<I> Command for SpawnBatch<I>
 where
     I: IntoIterator + Send + Sync + 'static,
-    I::Item: Bundle,
+    I::Item: StaticBundle,
 {
     fn write(self, world: &mut World) {
         world.spawn_batch(self.bundles_iter);
@@ -737,7 +785,7 @@ where
 pub struct InsertOrSpawnBatch<I, B>
 where
     I: IntoIterator + Send + Sync + 'static,
-    B: Bundle,
+    B: StaticBundle,
     I::IntoIter: Iterator<Item = (Entity, B)>,
 {
     pub bundles_iter: I,
@@ -746,7 +794,7 @@ where
 impl<I, B> Command for InsertOrSpawnBatch<I, B>
 where
     I: IntoIterator + Send + Sync + 'static,
-    B: Bundle,
+    B: StaticBundle,
     I::IntoIter: Iterator<Item = (Entity, B)>,
 {
     fn write(self, world: &mut World) {
@@ -773,39 +821,22 @@ impl Command for Despawn {
     }
 }
 
-pub struct InsertBundle<T> {
-    pub entity: Entity,
-    pub bundle: T,
+pub struct Insert {
+    pub(crate) entity: Entity,
+    pub(crate) bundles: Box<UnsafeCell<DynBundleVec>>,
 }
 
-impl<T> Command for InsertBundle<T>
-where
-    T: Bundle + 'static,
-{
+// SAFETY: TODO
+unsafe impl Sync for Insert {}
+
+impl Command for Insert {
     fn write(self, world: &mut World) {
         if let Some(mut entity) = world.get_entity_mut(self.entity) {
-            entity.insert_bundle(self.bundle);
+            let bundles = self.bundles.into_inner();
+            entity.insert_dynamic_bundle(bundles);
         } else {
-            panic!("error[B0003]: Could not insert a bundle (of type `{}`) for entity {:?} because it doesn't exist in this World.", std::any::type_name::<T>(), self.entity);
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct Insert<T> {
-    pub entity: Entity,
-    pub component: T,
-}
-
-impl<T> Command for Insert<T>
-where
-    T: Component,
-{
-    fn write(self, world: &mut World) {
-        if let Some(mut entity) = world.get_entity_mut(self.entity) {
-            entity.insert(self.component);
-        } else {
-            panic!("error[B0003]: Could not add a component (of type `{}`) to entity {:?} because it doesn't exist in this World.", std::any::type_name::<T>(), self.entity);
+            // TODO: somehow get component/bundle type names?
+            panic!("error[B0003]: Could not insert components for entity {:?} because it doesn't exist in this World.", self.entity);
         }
     }
 }
@@ -835,7 +866,7 @@ pub struct RemoveBundle<T> {
 
 impl<T> Command for RemoveBundle<T>
 where
-    T: Bundle,
+    T: StaticBundle,
 {
     fn write(self, world: &mut World) {
         if let Some(mut entity_mut) = world.get_entity_mut(self.entity) {
@@ -925,7 +956,7 @@ mod tests {
         }
     }
 
-    #[derive(Component, Resource)]
+    #[derive(Component, Resource, Debug, Eq, PartialEq)]
     struct W<T>(T);
 
     fn simple_command(world: &mut World) {
@@ -1052,5 +1083,33 @@ mod tests {
         queue.apply(&mut world);
         assert!(!world.contains_resource::<W<i32>>());
         assert!(world.contains_resource::<W<f64>>());
+    }
+
+    #[test]
+    fn avoid_unnecessary_archetypes() {
+        let mut world = World::default();
+        let initial_archetypes = world.archetypes().len();
+
+        let mut queue = CommandQueue::default();
+        let id;
+
+        {
+            let mut commands = Commands::new(&mut queue, &world);
+            id = commands
+                .spawn()
+                .insert(W(1i32))
+                .insert(W(2i64))
+                .insert(W(3.0f32))
+                .id();
+        }
+
+        queue.apply(&mut world);
+
+        let e = world.entity(id);
+        assert_eq!(e.get::<W<i32>>(), Some(&W(1)));
+        assert_eq!(e.get::<W<i64>>(), Some(&W(2)));
+        assert_eq!(e.get::<W<f32>>(), Some(&W(3.0)));
+
+        assert_eq!(world.archetypes().len() - initial_archetypes, 1);
     }
 }

@@ -7,6 +7,7 @@ use crate::{
 };
 pub use bevy_ecs_macros::Component;
 use bevy_ptr::OwningPtr;
+use bevy_reflect::TypeUuidDynamic;
 use std::{
     alloc::Layout,
     any::{Any, TypeId},
@@ -277,6 +278,39 @@ impl std::fmt::Debug for ComponentDescriptor {
             .field("type_id", &self.type_id)
             .field("layout", &self.layout)
             .finish()
+    }
+}
+
+pub trait DynamicComponentDescriptor {
+    fn name() -> &'static str;
+    fn storage_type() -> StorageType;
+    fn type_id() -> TypeId;
+    fn layout() -> Layout;
+    fn needs_drop() -> bool;
+}
+
+impl<T> DynamicComponentDescriptor for T
+where
+    T: Component,
+{
+    fn name() -> &'static str {
+        std::any::type_name::<T>()
+    }
+
+    fn storage_type() -> StorageType {
+        T::Storage::STORAGE_TYPE
+    }
+
+    fn type_id() -> TypeId {
+        TypeId::of::<T>()
+    }
+
+    fn layout() -> Layout {
+        Layout::new::<T>()
+    }
+
+    fn needs_drop() -> bool {
+        needs_drop::<T>()
     }
 }
 

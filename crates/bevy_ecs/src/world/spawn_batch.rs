@@ -1,5 +1,5 @@
 use crate::{
-    bundle::{Bundle, BundleSpawner},
+    bundle::{BundleSpawner, StaticBundle},
     entity::Entity,
     world::World,
 };
@@ -8,7 +8,7 @@ use std::iter::FusedIterator;
 pub struct SpawnBatchIter<'w, I>
 where
     I: Iterator,
-    I::Item: Bundle,
+    I::Item: StaticBundle,
 {
     inner: I,
     spawner: BundleSpawner<'w, 'w>,
@@ -17,7 +17,7 @@ where
 impl<'w, I> SpawnBatchIter<'w, I>
 where
     I: Iterator,
-    I::Item: Bundle,
+    I::Item: StaticBundle,
 {
     #[inline]
     pub(crate) fn new(world: &'w mut World, iter: I) -> Self {
@@ -51,7 +51,7 @@ where
 impl<I> Drop for SpawnBatchIter<'_, I>
 where
     I: Iterator,
-    I::Item: Bundle,
+    I::Item: StaticBundle,
 {
     fn drop(&mut self) {
         for _ in self {}
@@ -61,7 +61,7 @@ where
 impl<I> Iterator for SpawnBatchIter<'_, I>
 where
     I: Iterator,
-    I::Item: Bundle,
+    I::Item: StaticBundle,
 {
     type Item = Entity;
 
@@ -79,7 +79,7 @@ where
 impl<I, T> ExactSizeIterator for SpawnBatchIter<'_, I>
 where
     I: ExactSizeIterator<Item = T>,
-    T: Bundle,
+    T: StaticBundle,
 {
     fn len(&self) -> usize {
         self.inner.len()
@@ -89,6 +89,6 @@ where
 impl<I, T> FusedIterator for SpawnBatchIter<'_, I>
 where
     I: FusedIterator<Item = T>,
-    T: Bundle,
+    T: StaticBundle,
 {
 }

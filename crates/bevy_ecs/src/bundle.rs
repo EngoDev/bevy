@@ -3,6 +3,7 @@
 //! This module contains the [`Bundle`] trait and some other helper types.
 
 pub use bevy_ecs_macros::Bundle;
+use bevy_utils::type_erased::TypeErasedVec;
 
 use crate::{
     archetype::{AddBundle, Archetype, ArchetypeId, Archetypes, ComponentStatus},
@@ -12,7 +13,11 @@ use crate::{
 };
 use bevy_ecs_macros::all_tuples;
 use bevy_ptr::OwningPtr;
-use std::{any::TypeId, collections::HashMap};
+use std::{
+    any::TypeId,
+    collections::HashMap,
+    mem::{ManuallyDrop, MaybeUninit},
+};
 
 /// An ordered collection of [`Component`]s.
 ///
@@ -72,11 +77,11 @@ use std::{any::TypeId, collections::HashMap};
 ///
 /// # Safety
 ///
-/// - [`Bundle::component_ids`] must return the [`ComponentId`] for each component type in the
-/// bundle, in the _exact_ order that [`DynamicBundle::get_components`] is called.
-/// - [`Bundle::from_components`] must call `func` exactly once for each [`ComponentId`] returned by
-///   [`Bundle::component_ids`].
-pub unsafe trait Bundle: DynamicBundle + Send + Sync + 'static {
+/// - [`StaticBundle::component_ids`] must return the [`ComponentId`] for each component type in the
+/// bundle, in the _exact_ order that [`Bundle::get_components`] is called.
+/// - [`StaticBundle::from_components`] must call `func` exactly once for each [`ComponentId`] returned by
+///   [`StaticBundle::component_ids`].
+pub unsafe trait StaticBundle: Bundle + Send + Sync + 'static {
     /// Gets this [`Bundle`]'s component ids, in the order of this bundle's [`Component`]s
     fn component_ids(components: &mut Components, storages: &mut Storages) -> Vec<ComponentId>;
 
@@ -84,7 +89,8 @@ pub unsafe trait Bundle: DynamicBundle + Send + Sync + 'static {
     /// this bundle's [`Component`]s
     ///
     /// # Safety
-    /// Caller must return data for each component in the bundle, in the order of this bundle's
+    /// Caller must return data for each component in the bundle, in the order of this bundle's component_ids.
+    /// Either from [`StaticBundle::component_ids`] or [`DynamicBundle::dynamic_component_ids`].
     /// [`Component`]s
     unsafe fn from_components<T, F>(ctx: &mut T, func: F) -> Self
     where
@@ -94,13 +100,38 @@ pub unsafe trait Bundle: DynamicBundle + Send + Sync + 'static {
 
 /// The parts from [`Bundle`] that don't require statically knowing the components of the bundle.
 /// # Safety
-/// - The component ids of the [`DynamicBundle`] must not change between different invocations of [`DynamicBundle::get_components`]
-/// - [`Bundle::from_components`] must call `func` exactly once for each [`ComponentId`] of the bundle
-pub unsafe trait DynamicBundle {
+/// - The component ids of the [`Bundle`] must not change between different invocations of [`DynamicBundle::get_components`]
+pub unsafe trait Bundle {
     /// Calls `func` on each value, in the order of this bundle's [`Component`]s. This will
     /// [`std::mem::forget`] the bundle fields, so callers are responsible for dropping the fields
     /// if that is desirable.
     fn get_components(self, func: impl FnMut(OwningPtr<'_>));
+}
+
+/// # Safety
+/// - [`DynamicBundle::dynamic_component_ids`] must return the [`ComponentId`] for each component type in the
+/// bundle, in the _exact_ order that [`Bundle::get_components`] is called.
+pub unsafe trait DynamicBundle: Bundle + Send + Sync + 'static {
+    /// Gets this [`Bundle`]'s component ids, in the order of this bundle's [`Component`]s
+    fn dynamic_component_ids(
+        &mut self,
+        components: &mut Components,
+        storages: &mut Storages,
+    ) -> Vec<ComponentId>;
+}
+
+// SAFETY: The implementor of StaticBundle holds the same guarantees on [`StaticBundle::component_ids`].
+unsafe impl<T> DynamicBundle for T
+where
+    T: StaticBundle,
+{
+    fn dynamic_component_ids(
+        &mut self,
+        components: &mut Components,
+        storages: &mut Storages,
+    ) -> Vec<ComponentId> {
+        <T as StaticBundle>::component_ids(components, storages)
+    }
 }
 
 macro_rules! tuple_impl {
@@ -109,7 +140,7 @@ macro_rules! tuple_impl {
         // - `Bundle::component_ids` returns the `ComponentId`s for each component type in the
         // bundle, in the exact order that `BundleDynamic::get_components` is called.
         // - `Bundle::from_components` calls `func` exactly once for each `ComponentId` returned by `Bundle::component_ids`.
-        unsafe impl<$($name: Component),*> Bundle for ($($name,)*) {
+        unsafe impl<$($name: Component),*> StaticBundle for ($($name,)*) {
             #[allow(unused_variables)]
             fn component_ids(components: &mut Components, storages: &mut Storages) -> Vec<ComponentId> {
                 vec![$(components.init_component::<$name>(storages)),*]
@@ -126,7 +157,8 @@ macro_rules! tuple_impl {
             }
         }
 
-        unsafe impl<$($name: Component),*> DynamicBundle for ($($name,)*) {
+        // SAFETY: See safety for `impl StaticBundle` above.
+        unsafe impl<$($name: Component),*> Bundle for ($($name,)*) {
             #[allow(unused_variables, unused_mut)]
             fn get_components(self, mut func: impl FnMut(OwningPtr<'_>)) {
                 #[allow(non_snake_case)]
@@ -274,7 +306,7 @@ impl BundleInfo {
     /// `entity`, `bundle` must match this [`BundleInfo`]'s type
     #[inline]
     #[allow(clippy::too_many_arguments)]
-    unsafe fn write_components<T: DynamicBundle>(
+    unsafe fn write_components<T: Bundle>(
         &self,
         table: &mut Table,
         sparse_sets: &mut SparseSets,
@@ -425,7 +457,7 @@ impl<'a, 'b> BundleInserter<'a, 'b> {
     /// `entity` must currently exist in the source archetype for this inserter. `archetype_index`
     /// must be `entity`'s location in the archetype. `T` must match this [`BundleInfo`]'s type
     #[inline]
-    pub unsafe fn insert<T: DynamicBundle>(
+    pub unsafe fn insert<T: Bundle>(
         &mut self,
         entity: Entity,
         archetype_index: usize,
@@ -553,7 +585,7 @@ impl<'a, 'b> BundleSpawner<'a, 'b> {
     /// # Safety
     /// `entity` must be allocated (but non-existent), `T` must match this [`BundleInfo`]'s type
     #[inline]
-    pub unsafe fn spawn_non_existent<T: DynamicBundle>(
+    pub unsafe fn spawn_non_existent<T: Bundle>(
         &mut self,
         entity: Entity,
         bundle: T,
@@ -603,7 +635,7 @@ impl Bundles {
         self.bundle_ids.get(&type_id).cloned()
     }
 
-    pub(crate) fn init_info<'a, T: Bundle>(
+    pub(crate) fn init_info<'a, T: StaticBundle>(
         &'a mut self,
         components: &mut Components,
         storages: &mut Storages,
@@ -677,5 +709,112 @@ unsafe fn initialize_bundle(
         id,
         component_ids,
         storage_types,
+    }
+}
+
+enum BundleTraitParams<'f, 'c, 's, 'ids> {
+    GetComponents(&'f mut dyn FnMut(OwningPtr<'_>)),
+    ComponentIds(
+        (
+            &'c mut Components,
+            &'s mut Storages,
+            &'ids mut Vec<ComponentId>,
+        ),
+    ),
+}
+
+//
+pub struct DynBundleVec {
+    bundles: TypeErasedVec<fn(*mut MaybeUninit<u8>, BundleTraitParams)>,
+}
+
+impl DynBundleVec {
+    /// Constructs a new, empty [`DynBundleVec`].
+    pub fn new() -> Self {
+        Self {
+            bundles: TypeErasedVec::new(),
+        }
+    }
+
+    /// Append a [`StaticBundle`] to the collection.
+    pub fn push<T: StaticBundle>(&mut self, bundle: T) {
+        fn static_funcs<T: StaticBundle>(ptr: *mut MaybeUninit<u8>, params: BundleTraitParams) {
+            match params {
+                BundleTraitParams::GetComponents(func) => {
+                    // SAFETY: This function is only every called when the `bundles` bytes is the associated
+                    // [`DynamicBundle`] `T` type. Also this only reads the data via `read_unaligned` so unaligned
+                    // accesses are safe.
+                    let value = ManuallyDrop::new(unsafe { ptr.cast::<T>().read_unaligned() });
+                    OwningPtr::make(value, |ptr| func(ptr));
+                }
+                BundleTraitParams::ComponentIds((components, storages, ids)) => {
+                    ids.extend(T::component_ids(components, storages));
+                }
+            }
+        }
+
+        self.bundles.push(bundle, static_funcs::<T>);
+    }
+
+    /// Append a [`DynamicBundle`] to the collection.
+    pub fn push_dynamic<T: DynamicBundle>(&mut self, bundle: T) {
+        fn dynamic_funcs<T: DynamicBundle>(ptr: *mut MaybeUninit<u8>, params: BundleTraitParams) {
+            // SAFETY: This function is only every called when the `bundles` bytes is the associated
+            // [`DynamicBundle`] `T` type. Also this only reads the data via `read_unaligned` so unaligned
+            // accesses are safe.
+            let mut value = ManuallyDrop::new(unsafe { ptr.cast::<T>().read_unaligned() });
+            match params {
+                BundleTraitParams::GetComponents(func) => {
+                    OwningPtr::make(value, |ptr| func(ptr));
+                }
+                BundleTraitParams::ComponentIds((components, storages, ids)) => {
+                    ids.extend(value.dynamic_component_ids(components, storages));
+                    // SAFETY: `value` use to live at `ptr`, moving it back to the original location is safe.
+                    // Also, the value read from memory is wrapped in a `ManuallyDrop` ensuring a double
+                    // drop does not occur.
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(
+                            &value as *const _ as *const MaybeUninit<u8>,
+                            ptr,
+                            std::mem::size_of::<T>(),
+                        )
+                    };
+                }
+            }
+        }
+
+        self.bundles.push(bundle, dynamic_funcs::<T>);
+    }
+
+    /// Returns `true` if the collection contains no bundles.
+    pub fn is_empty(&self) -> bool {
+        self.bundles.is_empty()
+    }
+}
+
+// SAFETY: TODO
+unsafe impl Bundle for DynBundleVec {
+    fn get_components(mut self, mut func: impl FnMut(OwningPtr<'_>)) {
+        self.bundles.drain(|ptr, traits_func| {
+            traits_func(ptr, BundleTraitParams::GetComponents(&mut func));
+        });
+    }
+}
+
+// SAFETY: TODO
+unsafe impl DynamicBundle for DynBundleVec {
+    fn dynamic_component_ids(
+        &mut self,
+        components: &mut Components,
+        storages: &mut Storages,
+    ) -> Vec<ComponentId> {
+        let mut component_ids = Vec::with_capacity(self.bundles.len());
+        self.bundles.iter_mut(|ptr, trait_funcs| {
+            trait_funcs(
+                ptr,
+                BundleTraitParams::ComponentIds((components, storages, &mut component_ids)),
+            );
+        });
+        component_ids
     }
 }

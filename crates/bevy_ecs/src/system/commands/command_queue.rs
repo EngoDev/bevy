@@ -1,11 +1,12 @@
-use std::mem::{ManuallyDrop, MaybeUninit};
+use std::mem::MaybeUninit;
+
+use bevy_utils::type_erased::TypeErasedVec;
 
 use super::Command;
 use crate::world::World;
 
-struct CommandMeta {
-    offset: usize,
-    func: unsafe fn(value: *mut MaybeUninit<u8>, world: &mut World),
+struct UserData {
+    func: fn(value: *mut MaybeUninit<u8>, world: &mut World),
 }
 
 /// A queue of [`Command`]s
@@ -15,10 +16,16 @@ struct CommandMeta {
 // entities/components/resources, and it's not currently possible to parallelize these
 // due to mutable [`World`] access, maximizing performance for [`CommandQueue`] is
 // preferred to simplicity of implementation.
-#[derive(Default)]
 pub struct CommandQueue {
-    bytes: Vec<MaybeUninit<u8>>,
-    metas: Vec<CommandMeta>,
+    inner: TypeErasedVec<UserData>,
+}
+
+impl Default for CommandQueue {
+    fn default() -> Self {
+        Self {
+            inner: TypeErasedVec::new(),
+        }
+    }
 }
 
 // SAFETY: All commands [`Command`] implement [`Send`]
@@ -34,46 +41,20 @@ impl CommandQueue {
     where
         C: Command,
     {
-        /// SAFETY: This function is only every called when the `command` bytes is the associated
-        /// [`Commands`] `T` type. Also this only reads the data via `read_unaligned` so unaligned
-        /// accesses are safe.
-        unsafe fn write_command<T: Command>(command: *mut MaybeUninit<u8>, world: &mut World) {
-            let command = command.cast::<T>().read_unaligned();
+        fn write_command<T: Command>(command: *mut MaybeUninit<u8>, world: &mut World) {
+            // SAFETY: This function is only every called when the `command` bytes is the associated
+            // [`Commands`] `T` type. Also this only reads the data via `read_unaligned` so unaligned
+            // accesses are safe.
+            let command = unsafe { command.cast::<T>().read_unaligned() };
             command.write(world);
         }
 
-        let size = std::mem::size_of::<C>();
-        let old_len = self.bytes.len();
-
-        self.metas.push(CommandMeta {
-            offset: old_len,
-            func: write_command::<C>,
-        });
-
-        // Use `ManuallyDrop` to forget `command` right away, avoiding
-        // any use of it after the `ptr::copy_nonoverlapping`.
-        let command = ManuallyDrop::new(command);
-
-        if size > 0 {
-            self.bytes.reserve(size);
-
-            // SAFETY: The internal `bytes` vector has enough storage for the
-            // command (see the call the `reserve` above), the vector has
-            // its length set appropriately and can contain any kind of bytes.
-            // In case we're writing a ZST and the `Vec` hasn't allocated yet
-            // then `as_mut_ptr` will be a dangling (non null) pointer, and
-            // thus valid for ZST writes.
-            // Also `command` is forgotten so that  when `apply` is called
-            // later, a double `drop` does not occur.
-            unsafe {
-                std::ptr::copy_nonoverlapping(
-                    &*command as *const C as *const MaybeUninit<u8>,
-                    self.bytes.as_mut_ptr().add(old_len),
-                    size,
-                );
-                self.bytes.set_len(old_len + size);
-            }
-        }
+        self.inner.push(
+            command,
+            UserData {
+                func: write_command::<C>,
+            },
+        );
     }
 
     /// Execute the queued [`Command`]s in the world.
@@ -83,19 +64,11 @@ impl CommandQueue {
         // flush the previously queued entities
         world.flush();
 
-        // SAFETY: In the iteration below, `meta.func` will safely consume and drop each pushed command.
-        // This operation is so that we can reuse the bytes `Vec<u8>`'s internal storage and prevent
-        // unnecessary allocations.
-        unsafe { self.bytes.set_len(0) };
+        let func = |bytes, UserData { func }| {
+            func(bytes, world);
+        };
 
-        for meta in self.metas.drain(..) {
-            // SAFETY: The implementation of `write_command` is safe for the according Command type.
-            // It's ok to read from `bytes.as_mut_ptr()` because we just wrote to it in `push`.
-            // The bytes are safely cast to their original type, safely read, and then dropped.
-            unsafe {
-                (meta.func)(self.bytes.as_mut_ptr().add(meta.offset), world);
-            }
-        }
+        self.inner.drain(func);
     }
 }
 
@@ -202,8 +175,7 @@ mod test {
 
         // even though the first command panicking.
         // the `bytes`/`metas` vectors were cleared.
-        assert_eq!(queue.bytes.len(), 0);
-        assert_eq!(queue.metas.len(), 0);
+        assert_eq!(queue.inner.len(), 0);
 
         // Even though the first command panicked, it's still ok to push
         // more commands.
