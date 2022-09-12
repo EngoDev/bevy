@@ -112,7 +112,7 @@ pub unsafe trait Bundle {
 /// - [`DynamicBundle::dynamic_component_ids`] must return the [`ComponentId`] for each component type in the
 /// bundle, in the _exact_ order that [`Bundle::get_components`] is called.
 pub unsafe trait DynamicBundle: Bundle + Send + Sync + 'static {
-    /// Gets this [`Bundle`]'s component ids, in the order of this bundle's [`Component`]s
+    /// Gets this [`DynamicBundle`]'s component ids, in the order of this bundle's [`Component`]s
     fn dynamic_component_ids(
         &mut self,
         components: &mut Components,
@@ -137,9 +137,9 @@ where
 macro_rules! tuple_impl {
     ($($name: ident),*) => {
         // SAFETY:
-        // - `Bundle::component_ids` returns the `ComponentId`s for each component type in the
-        // bundle, in the exact order that `BundleDynamic::get_components` is called.
-        // - `Bundle::from_components` calls `func` exactly once for each `ComponentId` returned by `Bundle::component_ids`.
+        // - `StaticBundle::component_ids` returns the `ComponentId`s for each component type in the
+        // bundle, in the exact order that `Bundle::get_components` is called.
+        // - `Bundle::from_components` calls `func` exactly once for each `ComponentId` returned by `StaticBundle::component_ids`.
         unsafe impl<$($name: Component),*> StaticBundle for ($($name,)*) {
             #[allow(unused_variables)]
             fn component_ids(components: &mut Components, storages: &mut Storages) -> Vec<ComponentId> {

@@ -1,6 +1,5 @@
-use std::mem::MaybeUninit;
-
 use bevy_utils::type_erased::TypeErasedVec;
+use std::mem::MaybeUninit;
 
 use super::Command;
 use crate::world::World;

@@ -740,20 +740,6 @@ where
     }
 }
 
-// #[derive(Debug)]
-// pub struct Spawn<T> {
-//     pub bundle: T,
-// }
-
-// impl<T> Command for Spawn<T>
-// where
-//     T: Bundle,
-// {
-//     fn write(self, world: &mut World) {
-//         world.spawn().insert_bundle(self.bundle);
-//     }
-// }
-
 pub struct GetOrSpawn {
     entity: Entity,
 }
